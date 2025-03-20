@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,9 +9,134 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Github, Linkedin, Upload, Save } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import api, { updateStudentProfile } from "@/lib/api"
+
+interface UserData {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+  user_type: 'student' | 'company';
+}
+
+interface StudentProfileData {
+  graduation_year: number | null;
+  branch: string;
+  skills: string[];
+  github_url: string;
+  linkedin_url: string;
+  portfolio_url: string;
+  profile_picture: string | null;
+}
+
+interface UserProfile extends UserData, StudentProfileData {}
 
 export default function StudentProfile() {
   const [isEditing, setIsEditing] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [formData, setFormData] = useState<Partial<UserProfile>>({})
+  const { toast } = useToast()
+
+  useEffect(() => {
+    // Check if we have the profile in localStorage
+    const storedProfile = localStorage.getItem('studentProfile');
+    
+    if (storedProfile) {
+      try {
+        const parsedProfile = JSON.parse(storedProfile) as UserProfile;
+        setProfile(parsedProfile);
+        setFormData(parsedProfile);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error parsing stored profile:', error);
+        fetchProfile();
+      }
+    } else {
+      fetchProfile();
+    }
+  }, []);
+  
+  // Fetch the latest profile data
+  const fetchProfile = async () => {
+    try {
+      console.log('Fetching student profile data...')
+      const userData = await api.get<UserProfile>('/users/me/').then(res => res.data);
+      
+      console.log('Fetched profile:', userData)
+      setProfile(userData)
+      setFormData(userData)
+      localStorage.setItem('studentProfile', JSON.stringify(userData))
+    } catch (error) {
+      console.error('Error fetching profile:', error)
+      toast({
+        title: "Error",
+        description: "Could not load your profile. Please try again later.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target
+    setFormData(prev => ({ ...prev, [id]: value }))
+  }
+
+  const handleSelectChange = (id: string, value: string) => {
+    setFormData(prev => ({ ...prev, [id]: value }))
+  }
+
+  const handleSave = async () => {
+    try {
+      setLoading(true)
+      
+      // Prepare the data for update
+      const updatedData = {
+        first_name: formData.first_name || '',
+        last_name: formData.last_name || '',
+        phone_number: formData.phone_number || '',
+        graduation_year: formData.graduation_year ? parseInt(formData.graduation_year.toString()) : null,
+        branch: formData.branch || '',
+        skills: Array.isArray(formData.skills) ? formData.skills : [],
+        github_url: formData.github_url || '',
+        linkedin_url: formData.linkedin_url || '',
+        portfolio_url: formData.portfolio_url || ''
+      };
+
+      console.log('Sending profile update:', updatedData);
+      
+      // Use the updateStudentProfile function from the API
+      const userData = await updateStudentProfile(updatedData) as UserProfile;
+
+      console.log('Received response:', userData);
+      
+      setProfile(userData)
+      setFormData(userData)
+      localStorage.setItem('studentProfile', JSON.stringify(userData))
+      setIsEditing(false)
+      toast({
+        title: "Success",
+        description: "Your profile has been updated successfully.",
+      })
+    } catch (error: any) {
+      console.error('Error updating profile:', error.response?.data || error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Could not update your profile. Please try again later.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-64">Loading profile...</div>
+  }
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -23,44 +148,62 @@ export default function StudentProfile() {
         <CardContent className="space-y-4">
           <div className="flex flex-col items-center space-y-4">
             <Avatar className="h-24 w-24">
-              <AvatarImage src="/placeholder.svg?height=96&width=96" alt="Profile" />
-              <AvatarFallback>JS</AvatarFallback>
+              {profile?.profile_picture ? (
+                <AvatarImage src={profile.profile_picture} alt={`${profile.first_name} ${profile.last_name}`} />
+              ) : (
+                <AvatarFallback>{profile?.first_name?.[0]}{profile?.last_name?.[0]}</AvatarFallback>
+              )}
             </Avatar>
-            <Button variant="outline" size="sm" className="gap-1">
+            <Button variant="outline" size="sm" className="gap-1" disabled={!isEditing}>
               <Upload className="h-4 w-4" /> Upload Photo
             </Button>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="name">Full Name</Label>
-            <Input id="name" defaultValue="John Smith" readOnly={!isEditing} />
+            <Label htmlFor="first_name">First Name</Label>
+            <Input 
+              id="first_name" 
+              value={formData.first_name || ''} 
+              onChange={handleChange} 
+              readOnly={!isEditing} 
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="last_name">Last Name</Label>
+            <Input 
+              id="last_name" 
+              value={formData.last_name || ''} 
+              onChange={handleChange} 
+              readOnly={!isEditing} 
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" defaultValue="john.smith@example.com" readOnly={!isEditing} />
+            <Input 
+              id="email" 
+              type="email" 
+              value={formData.email || ''} 
+              readOnly={true} 
+            />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number</Label>
-            <Input id="phone" type="tel" defaultValue="+1 (555) 123-4567" readOnly={!isEditing} />
+            <Label htmlFor="phone_number">Phone Number</Label>
+            <Input 
+              id="phone_number" 
+              type="tel" 
+              value={formData.phone_number || ''} 
+              onChange={handleChange} 
+              readOnly={!isEditing} 
+            />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="year">Current Year</Label>
-              <Select disabled={!isEditing} defaultValue="3">
-                <SelectTrigger id="year">
-                  <SelectValue placeholder="Select Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">First Year</SelectItem>
-                  <SelectItem value="2">Second Year</SelectItem>
-                  <SelectItem value="3">Third Year</SelectItem>
-                  <SelectItem value="4">Fourth Year</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="graduation">Graduation Year</Label>
-              <Select disabled={!isEditing} defaultValue="2025">
-                <SelectTrigger id="graduation">
+              <Label htmlFor="graduation_year">Graduation Year</Label>
+              <Select 
+                disabled={!isEditing} 
+                value={formData.graduation_year?.toString() || ''} 
+                onValueChange={(value) => handleSelectChange('graduation_year', value)}
+              >
+                <SelectTrigger id="graduation_year">
                   <SelectValue placeholder="Select Year" />
                 </SelectTrigger>
                 <SelectContent>
@@ -71,21 +214,38 @@ export default function StudentProfile() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="branch">Branch</Label>
+              <Select 
+                disabled={!isEditing} 
+                value={formData.branch || ''} 
+                onValueChange={(value) => handleSelectChange('branch', value)}
+              >
+                <SelectTrigger id="branch">
+                  <SelectValue placeholder="Select Branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Computer Science">Computer Science</SelectItem>
+                  <SelectItem value="Information Technology">Information Technology</SelectItem>
+                  <SelectItem value="Electronics & Communication">Electronics & Communication</SelectItem>
+                  <SelectItem value="Mechanical Engineering">Mechanical Engineering</SelectItem>
+                  <SelectItem value="Civil Engineering">Civil Engineering</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="branch">Branch</Label>
-            <Select disabled={!isEditing} defaultValue="cs">
-              <SelectTrigger id="branch">
-                <SelectValue placeholder="Select Branch" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cs">Computer Science</SelectItem>
-                <SelectItem value="it">Information Technology</SelectItem>
-                <SelectItem value="ec">Electronics & Communication</SelectItem>
-                <SelectItem value="me">Mechanical Engineering</SelectItem>
-                <SelectItem value="ce">Civil Engineering</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label htmlFor="skills">Skills</Label>
+            <Input
+              id="skills"
+              placeholder="Enter skills separated by commas"
+              value={formData.skills?.join(', ') || ''}
+              onChange={(e) => {
+                const skillsArray = e.target.value.split(',').map(skill => skill.trim()).filter(Boolean);
+                setFormData(prev => ({ ...prev, skills: skillsArray }));
+              }}
+              readOnly={!isEditing}
+            />
           </div>
         </CardContent>
         <CardFooter className="flex justify-between">
@@ -93,7 +253,7 @@ export default function StudentProfile() {
             {isEditing ? "Cancel" : "Edit Profile"}
           </Button>
           {isEditing && (
-            <Button className="gap-1">
+            <Button className="gap-1" onClick={handleSave} disabled={loading}>
               <Save className="h-4 w-4" /> Save Changes
             </Button>
           )}
@@ -102,79 +262,48 @@ export default function StudentProfile() {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Career Goals</CardTitle>
-            <CardDescription>Tell us about your career aspirations and goals.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="goals">Career Objectives</Label>
-              <Textarea
-                id="goals"
-                placeholder="Describe your career goals..."
-                className="min-h-[120px]"
-                defaultValue="I aim to become a full-stack developer specializing in cloud-native applications. I'm interested in working with modern technologies like React, Node.js, and AWS."
-                readOnly={!isEditing}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="interests">Areas of Interest</Label>
-              <Select disabled={!isEditing} defaultValue="webdev">
-                <SelectTrigger id="interests">
-                  <SelectValue placeholder="Select Primary Interest" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="webdev">Web Development</SelectItem>
-                  <SelectItem value="mobile">Mobile Development</SelectItem>
-                  <SelectItem value="ai">AI & Machine Learning</SelectItem>
-                  <SelectItem value="data">Data Science</SelectItem>
-                  <SelectItem value="cloud">Cloud Computing</SelectItem>
-                  <SelectItem value="security">Cybersecurity</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
             <CardTitle>Social Media & Portfolio</CardTitle>
             <CardDescription>Connect your professional profiles and portfolio.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="github" className="flex items-center gap-2">
+              <Label htmlFor="github_url" className="flex items-center gap-2">
                 <Github className="h-4 w-4" /> GitHub
               </Label>
               <Input
-                id="github"
+                id="github_url"
                 placeholder="github.com/username"
-                defaultValue="github.com/johnsmith"
+                value={formData.github_url || ''}
+                onChange={handleChange}
                 readOnly={!isEditing}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="linkedin" className="flex items-center gap-2">
+              <Label htmlFor="linkedin_url" className="flex items-center gap-2">
                 <Linkedin className="h-4 w-4" /> LinkedIn
               </Label>
               <Input
-                id="linkedin"
+                id="linkedin_url"
                 placeholder="linkedin.com/in/username"
-                defaultValue="linkedin.com/in/john-smith"
+                value={formData.linkedin_url || ''}
+                onChange={handleChange}
                 readOnly={!isEditing}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="portfolio">Portfolio Website</Label>
+              <Label htmlFor="portfolio_url">Portfolio Website</Label>
               <Input
-                id="portfolio"
+                id="portfolio_url"
                 placeholder="yourportfolio.com"
-                defaultValue="johnsmith.dev"
+                value={formData.portfolio_url || ''}
+                onChange={handleChange}
                 readOnly={!isEditing}
               />
             </div>
           </CardContent>
           <CardFooter>
             {isEditing && (
-              <Button className="w-full gap-1">
+              <Button className="w-full gap-1" onClick={handleSave} disabled={loading}>
                 <Save className="h-4 w-4" /> Save Links
               </Button>
             )}
@@ -184,4 +313,3 @@ export default function StudentProfile() {
     </div>
   )
 }
-

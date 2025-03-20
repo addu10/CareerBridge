@@ -18,4 +18,4 @@ urlpatterns = [
     path('password/change/', PasswordChangeView.as_view(), name='password-change'),
     path('password/reset/', PasswordResetView.as_view(), name='password-reset'),
     path('password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
-] 
+]

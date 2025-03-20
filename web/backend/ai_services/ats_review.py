@@ -6,47 +6,173 @@ import json
 
 class ATSReviewer:
     def __init__(self):
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel('gemini-pro')
+        try:
+            genai.configure(
+                api_key="AIzaSyC9thMMTST1V85nN8e7EjISEVegtttlBrI"
+            )
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            # Test the model
+            test_response = self.model.generate_content("Test")
+            if not test_response.text:
+                raise ValueError("Model initialization test failed")
+            print("Successfully initialized ATS Review model")
+        except Exception as e:
+            print(f"Error initializing AI model: {str(e)}")
+            self.model = None
         
     def analyze_resume(self, resume_text: str, job_description: str) -> Dict[str, Any]:
         """
         Comprehensive ATS analysis of resume against job description
         """
+        if self.model is None:
+            return {
+                "ats_score": 0,
+                "keyword_analysis": {
+                    "matched_keywords": [],
+                    "missing_keywords": [],
+                    "keyword_density": {}
+                },
+                "format_analysis": {
+                    "is_ats_friendly": False,
+                    "format_issues": ["AI model is not available. Please check your API configuration."],
+                    "recommendations": ["Please try again later when the AI service is available."]
+                },
+                "content_analysis": {
+                    "section_completeness": {
+                        "contact": 0,
+                        "summary": 0,
+                        "education": 0,
+                        "experience": 0,
+                        "skills": 0
+                    },
+                    "content_quality": {
+                        "achievements": "Could not analyze",
+                        "experience_details": "Could not analyze",
+                        "skills_presentation": "Could not analyze"
+                    },
+                    "improvement_suggestions": ["Error analyzing content"]
+                },
+                "optimization_tips": ["AI model is not available"]
+            }
+            
+        # Extract keywords from job description
+        job_keywords = self.extract_keywords(job_description)
+        
+        # Check resume format compatibility
+        format_analysis = self.check_format_compatibility(resume_text)
+        
+        # Analyze section completeness
+        section_analysis = self.analyze_section_completeness(resume_text)
+        
+        # Prepare the prompt for the AI model
         prompt = f"""
-        As an ATS (Applicant Tracking System) expert, analyze this resume against the job description.
-        Provide a detailed analysis focusing on ATS optimization and keyword matching.
-
-        Job Description:
-        {job_description}
-
+        Analyze this resume against the job description for ATS compatibility.
+        
         Resume:
         {resume_text}
-
-        Provide analysis in the following JSON format:
+        
+        Job Description:
+        {job_description}
+        
+        Return your analysis in this exact JSON format without any additional text or explanation:
         {{
-            "ats_score": float,  # 0-100 score of ATS compatibility
+            "ats_score": <number between 0-100>,
             "keyword_analysis": {{
-                "matched_keywords": List[str],  # Keywords from job description found in resume
-                "missing_keywords": List[str],  # Important keywords from job description missing
-                "keyword_density": Dict[str, float]  # Frequency of each matched keyword
+                "matched_keywords": [<list of keywords found in both resume and job description>],
+                "missing_keywords": [<important keywords from job description missing in resume>],
+                "keyword_density": {{<keyword>: <count in resume>}}
             }},
             "format_analysis": {{
-                "is_ats_friendly": bool,
-                "format_issues": List[str],
-                "recommendations": List[str]
+                "is_ats_friendly": <boolean>,
+                "format_issues": [<list of ATS format issues>],
+                "recommendations": [<list of format improvement recommendations>]
             }},
             "content_analysis": {{
-                "section_completeness": Dict[str, float],  # 0-100 score for each section
-                "content_quality": Dict[str, str],  # Quality assessment of each section
-                "improvement_suggestions": List[str]
+                "section_completeness": {{
+                    "contact": <0-100 score>,
+                    "summary": <0-100 score>,
+                    "education": <0-100 score>,
+                    "experience": <0-100 score>,
+                    "skills": <0-100 score>
+                }},
+                "content_quality": {{
+                    "achievements": "<evaluation of achievement descriptions>",
+                    "experience_details": "<evaluation of experience descriptions>",
+                    "skills_presentation": "<evaluation of skills presentation>"
+                }},
+                "improvement_suggestions": [<specific content improvement suggestions>]
             }},
-            "optimization_tips": List[str]  # Specific tips to improve ATS compatibility
+            "optimization_tips": [<list of actionable tips to improve ATS compatibility>]
         }}
         """
         
-        response = self.model.generate_content(prompt)
-        return json.loads(response.text)
+        try:
+            response = self.model.generate_content(prompt)
+            if not response.text:
+                return self._get_fallback_response("Empty response from Gemini API")
+                
+            # Extract JSON from the response text
+            # First, try direct parsing
+            try:
+                result = json.loads(response.text)
+            except json.JSONDecodeError:
+                # If direct parsing fails, try to extract JSON from the text
+                text = response.text
+                # Find JSON-like content between curly braces
+                match = re.search(r'\{.*\}', text, re.DOTALL)
+                if match:
+                    try:
+                        result = json.loads(match.group(0))
+                    except:
+                        print("Could not parse JSON from response")
+                        return self._get_fallback_response("Invalid response format from Gemini API")
+                else:
+                    print("No JSON content found in response")
+                    return self._get_fallback_response("Invalid response format from Gemini API")
+            
+            # Validate required fields
+            required_fields = ['ats_score', 'keyword_analysis', 'format_analysis', 'content_analysis', 'optimization_tips']
+            if not all(field in result for field in required_fields):
+                print("Missing required fields in AI response")
+                return self._get_fallback_response("Incomplete analysis from AI model")
+                
+            return result
+            
+        except Exception as e:
+            print(f"Error in ATS analysis: {str(e)}")
+            return self._get_fallback_response(str(e))
+
+    def _get_fallback_response(self, error_message: str) -> Dict[str, Any]:
+        """Return a structured fallback response when analysis fails"""
+        return {
+            "ats_score": 0,
+            "keyword_analysis": {
+                "matched_keywords": [],
+                "missing_keywords": ["Could not analyze keywords"],
+                "keyword_density": {}
+            },
+            "format_analysis": {
+                "is_ats_friendly": False,
+                "format_issues": ["Could not analyze format"],
+                "recommendations": ["Please try again"]
+            },
+            "content_analysis": {
+                "section_completeness": {
+                    "contact": 0,
+                    "summary": 0,
+                    "education": 0,
+                    "experience": 0,
+                    "skills": 0
+                },
+                "content_quality": {
+                    "achievements": "Could not analyze",
+                    "experience_details": "Could not analyze",
+                    "skills_presentation": "Could not analyze"
+                },
+                "improvement_suggestions": ["Error analyzing content"]
+            },
+            "optimization_tips": ["Analysis failed: " + error_message]
+        }
 
     def extract_keywords(self, text: str) -> List[str]:
         """
@@ -122,7 +248,7 @@ class ATSReviewer:
         Analyze completeness of different resume sections
         """
         sections = {
-            "contact_info": self._check_contact_info(resume_text),
+            "contact": self._check_contact_info(resume_text),
             "summary": self._check_summary(resume_text),
             "experience": self._check_experience(resume_text),
             "education": self._check_education(resume_text),
@@ -208,4 +334,4 @@ class ATSReviewer:
             return 75
         elif len(skills) >= 1:
             return 50
-        return 25 
+        return 25

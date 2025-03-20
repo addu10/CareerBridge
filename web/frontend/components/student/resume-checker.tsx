@@ -1,237 +1,359 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Upload, FileText, CheckCircle, AlertCircle, Info } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/components/ui/use-toast"
+import { analyzeResume, reviewATS } from "@/lib/api"
+
+interface AnalysisResult {
+  score: number;
+  feedback: {
+    strengths: string[];
+    weaknesses: string[];
+    improvements: string[];
+  };
+  ats_analysis: {
+    score: number;
+    keyword_analysis: {
+      matched_keywords: string[];
+      missing_keywords: string[];
+      keyword_density: { [key: string]: number };
+    };
+    format_analysis: {
+      is_ats_friendly: boolean;
+      format_issues: string[];
+      recommendations: string[];
+    };
+    content_analysis: {
+      section_completeness: { [key: string]: number };
+      content_quality: { [key: string]: string };
+      improvement_suggestions: string[];
+    };
+    optimization_tips: string[];
+  };
+}
 
 export default function ResumeChecker() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isAnalyzed, setIsAnalyzed] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [jobDescription, setJobDescription] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { toast } = useToast()
 
-  const handleUpload = () => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "Error",
+          description: "File size should not exceed 5MB",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      if (!["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/rtf"].includes(file.type)) {
+        toast({
+          title: "Error",
+          description: "Please upload a PDF, DOC, DOCX, or RTF file",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setSelectedFile(file)
+    }
+  }
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      toast({
+        title: "Error",
+        description: "Please select a file to analyze",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!jobDescription) {
+      toast({
+        title: "Error",
+        description: "Please enter a job description for ATS analysis",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsAnalyzing(true)
     setProgress(0)
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setIsAnalyzing(false)
-          setIsAnalyzed(true)
-          return 100
+    try {
+      // Start progress animation
+      const interval = setInterval(() => {
+        setProgress((prev) => (prev < 90 ? prev + 10 : prev))
+      }, 500)
+
+      // Prepare form data
+      const formData = new FormData()
+      formData.append('resume', selectedFile)
+
+      // Call both analysis endpoints
+      const [analysisResponse, atsResponse] = await Promise.all([
+        analyzeResume(formData),
+        reviewATS(formData, jobDescription)
+      ])
+
+      // Combine results
+      const result: AnalysisResult = {
+        score: analysisResponse.score,
+        feedback: {
+          strengths: analysisResponse.strengths,
+          weaknesses: analysisResponse.weaknesses,
+          improvements: analysisResponse.improvements,
+        },
+        ats_analysis: {
+          score: atsResponse.score,
+          keyword_analysis: atsResponse.keyword_analysis,
+          format_analysis: atsResponse.format_analysis,
+          content_analysis: atsResponse.content_analysis,
+          optimization_tips: atsResponse.optimization_tips
         }
-        return prev + 10
+      }
+
+      setResult(result)
+      setProgress(100)
+      setIsAnalyzed(true)
+
+      clearInterval(interval)
+    } catch (error) {
+      console.error('Error analyzing resume:', error)
+      toast({
+        title: "Error",
+        description: "Failed to analyze resume. Please try again.",
+        variant: "destructive",
       })
-    }, 300)
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full max-w-4xl mx-auto p-4 space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>Resume Checker</CardTitle>
-          <CardDescription>Upload your resume and get AI-powered feedback to improve it.</CardDescription>
+          <CardDescription>
+            Upload your resume to get AI-powered feedback and ATS compatibility analysis
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!isAnalyzed ? (
-            <div className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-12 text-center">
-              <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">Upload Your Resume</h3>
-              <p className="text-muted-foreground mb-4">Supported formats: PDF, DOCX, RTF (Max size: 5MB)</p>
-              <Button onClick={handleUpload} className="gap-2">
-                <Upload className="h-4 w-4" /> Upload Resume
-              </Button>
-              {isAnalyzing && (
-                <div className="w-full mt-6 space-y-2">
-                  <p className="text-sm text-muted-foreground">Analyzing your resume...</p>
-                  <Progress value={progress} className="h-2 w-full" />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-primary" />
-                  <span className="font-medium">resume_john_smith.pdf</span>
-                </div>
-                <Button variant="outline" size="sm" className="gap-1">
-                  <Upload className="h-4 w-4" /> Upload New
-                </Button>
+          {/* File Upload Section */}
+          <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer"
+               onClick={() => fileInputRef.current?.click()}>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleFileSelect}
+              accept=".pdf,.doc,.docx,.rtf"
+            />
+            <Upload className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-semibold">Upload Resume</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              PDF, DOC, DOCX or RTF up to 5MB
+            </p>
+            {selectedFile && (
+              <div className="mt-2 flex items-center justify-center text-sm text-green-600">
+                <FileText className="mr-2 h-4 w-4" />
+                {selectedFile.name}
               </div>
+            )}
+          </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="bg-green-500/10 border-green-500/20">
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col items-center text-center">
-                      <CheckCircle className="h-8 w-8 text-green-500 mb-2" />
-                      <h3 className="font-medium">Overall Score</h3>
-                      <p className="text-3xl font-bold text-green-500">82%</p>
-                      <p className="text-sm text-muted-foreground">Good resume with room for improvement</p>
-                    </div>
-                  </CardContent>
-                </Card>
+          {/* Job Description Input */}
+          <div className="space-y-2">
+            <label htmlFor="jobDescription" className="block text-sm font-medium">
+              Job Description
+            </label>
+            <textarea
+              id="jobDescription"
+              rows={5}
+              className="w-full p-2 border rounded-md"
+              placeholder="Paste the job description here for ATS analysis..."
+              value={jobDescription}
+              onChange={(e) => setJobDescription(e.target.value)}
+            />
+          </div>
 
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col items-center text-center">
-                      <AlertCircle className="h-8 w-8 text-amber-500 mb-2" />
-                      <h3 className="font-medium">Areas to Improve</h3>
-                      <p className="text-3xl font-bold">3</p>
-                      <p className="text-sm text-muted-foreground">Critical issues to address</p>
-                    </div>
-                  </CardContent>
-                </Card>
+          {/* Analysis Button */}
+          <Button
+            className="w-full"
+            onClick={handleUpload}
+            disabled={isAnalyzing || !selectedFile || !jobDescription}
+          >
+            {isAnalyzing ? "Analyzing..." : "Analyze Resume"}
+          </Button>
 
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col items-center text-center">
-                      <Info className="h-8 w-8 text-blue-500 mb-2" />
-                      <h3 className="font-medium">ATS Compatibility</h3>
-                      <p className="text-3xl font-bold text-blue-500">90%</p>
-                      <p className="text-sm text-muted-foreground">Your resume is ATS-friendly</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Tabs defaultValue="feedback">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="feedback">Detailed Feedback</TabsTrigger>
-                  <TabsTrigger value="keywords">Keywords Analysis</TabsTrigger>
-                  <TabsTrigger value="suggestions">Improvement Suggestions</TabsTrigger>
-                </TabsList>
-                <TabsContent value="feedback" className="space-y-4 mt-4">
-                  <div className="space-y-4">
-                    <div className="p-4 border rounded-lg bg-amber-500/10 border-amber-500/20">
-                      <h4 className="font-medium flex items-center gap-2 mb-2">
-                        <AlertCircle className="h-4 w-4 text-amber-500" /> Work Experience Section
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        Your work experience lacks quantifiable achievements. Add metrics and results to make your
-                        impact clearer.
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-amber-500/10 border-amber-500/20">
-                      <h4 className="font-medium flex items-center gap-2 mb-2">
-                        <AlertCircle className="h-4 w-4 text-amber-500" /> Skills Section
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        Your skills section is too generic. Add specific technologies, frameworks, and tools you're
-                        proficient in.
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-amber-500/10 border-amber-500/20">
-                      <h4 className="font-medium flex items-center gap-2 mb-2">
-                        <AlertCircle className="h-4 w-4 text-amber-500" /> Summary Statement
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        Your summary is too long. Keep it concise (2-3 sentences) and highlight your most relevant
-                        qualifications.
-                      </p>
-                    </div>
-                    <div className="p-4 border rounded-lg bg-green-500/10 border-green-500/20">
-                      <h4 className="font-medium flex items-center gap-2 mb-2">
-                        <CheckCircle className="h-4 w-4 text-green-500" /> Education Section
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        Your education section is well-structured and includes relevant coursework and GPA.
-                      </p>
-                    </div>
-                  </div>
-                </TabsContent>
-                <TabsContent value="keywords" className="space-y-4 mt-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Keyword Analysis</CardTitle>
-                      <CardDescription>How well your resume matches job descriptions in your field.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-sm font-medium">Technical Skills</span>
-                            <span className="text-sm text-muted-foreground">75%</span>
-                          </div>
-                          <Progress value={75} className="h-2" />
-                        </div>
-                        <div>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-sm font-medium">Industry Buzzwords</span>
-                            <span className="text-sm text-muted-foreground">60%</span>
-                          </div>
-                          <Progress value={60} className="h-2" />
-                        </div>
-                        <div>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-sm font-medium">Action Verbs</span>
-                            <span className="text-sm text-muted-foreground">85%</span>
-                          </div>
-                          <Progress value={85} className="h-2" />
-                        </div>
-                        <div>
-                          <div className="flex justify-between mb-1">
-                            <span className="text-sm font-medium">Soft Skills</span>
-                            <span className="text-sm text-muted-foreground">50%</span>
-                          </div>
-                          <Progress value={50} className="h-2" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                <TabsContent value="suggestions" className="space-y-4 mt-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>AI-Generated Suggestions</CardTitle>
-                      <CardDescription>Specific improvements to enhance your resume.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="p-4 border rounded-lg">
-                          <h4 className="font-medium mb-2">Work Experience Improvements</h4>
-                          <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
-                            <li>
-                              Add metrics to your achievements (e.g., "Increased website traffic by 45%" instead of
-                              "Increased website traffic")
-                            </li>
-                            <li>Use more powerful action verbs (e.g., "Spearheaded" instead of "Led")</li>
-                            <li>Focus on results rather than responsibilities</li>
-                          </ul>
-                        </div>
-                        <div className="p-4 border rounded-lg">
-                          <h4 className="font-medium mb-2">Skills Section Improvements</h4>
-                          <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
-                            <li>Group skills by category (e.g., Programming Languages, Frameworks, Tools)</li>
-                            <li>Add proficiency levels for technical skills</li>
-                            <li>Include relevant soft skills with examples</li>
-                          </ul>
-                        </div>
-                        <div className="p-4 border rounded-lg">
-                          <h4 className="font-medium mb-2">Summary Statement Improvements</h4>
-                          <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
-                            <li>Shorten to 2-3 impactful sentences</li>
-                            <li>Include your years of experience and specialization</li>
-                            <li>Mention your most impressive achievement</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </Tabs>
+          {/* Progress Bar */}
+          {isAnalyzing && (
+            <div className="space-y-2">
+              <Progress value={progress} />
+              <p className="text-sm text-center text-gray-500">
+                Analyzing your resume...
+              </p>
             </div>
           )}
         </CardContent>
-        <CardFooter className="flex justify-between">
-          {isAnalyzed && <Button variant="outline">Download Full Report</Button>}
-        </CardFooter>
       </Card>
+
+      {/* Results Section */}
+      {isAnalyzed && result && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Analysis Results</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="general">
+              <TabsList>
+                <TabsTrigger value="general">General Analysis</TabsTrigger>
+                <TabsTrigger value="ats">ATS Analysis</TabsTrigger>
+              </TabsList>
+
+              {/* General Analysis Tab */}
+              <TabsContent value="general" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Overall Score</h3>
+                  <span className="text-2xl font-bold">{result.score}%</span>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-semibold flex items-center">
+                      <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
+                      Strengths
+                    </h4>
+                    <ul className="mt-2 space-y-1 list-disc list-inside">
+                      {result.feedback.strengths.map((strength, i) => (
+                        <li key={i}>{strength}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold flex items-center">
+                      <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+                      Areas for Improvement
+                    </h4>
+                    <ul className="mt-2 space-y-1 list-disc list-inside">
+                      {result.feedback.weaknesses.map((weakness, i) => (
+                        <li key={i}>{weakness}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="font-semibold flex items-center">
+                      <Info className="h-4 w-4 mr-2 text-blue-500" />
+                      Recommendations
+                    </h4>
+                    <ul className="mt-2 space-y-1 list-disc list-inside">
+                      {result.feedback.improvements.map((improvement, i) => (
+                        <li key={i}>{improvement}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* ATS Analysis Tab */}
+              <TabsContent value="ats" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">ATS Compatibility Score</h3>
+                  <span className="text-2xl font-bold">{result.ats_analysis.score}%</span>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Keyword Analysis */}
+                  <div>
+                    <h4 className="font-semibold">Keyword Analysis</h4>
+                    <div className="mt-2 grid grid-cols-2 gap-4">
+                      <div>
+                        <h5 className="text-sm font-medium text-green-600">Matched Keywords</h5>
+                        <ul className="mt-1 space-y-1 list-disc list-inside">
+                          {result.ats_analysis.keyword_analysis.matched_keywords.map((keyword, i) => (
+                            <li key={i}>{keyword}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-medium text-red-600">Missing Keywords</h5>
+                        <ul className="mt-1 space-y-1 list-disc list-inside">
+                          {result.ats_analysis.keyword_analysis.missing_keywords.map((keyword, i) => (
+                            <li key={i}>{keyword}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Format Analysis */}
+                  <div>
+                    <h4 className="font-semibold">Format Analysis</h4>
+                    <div className="mt-2">
+                      <p className={`text-sm ${result.ats_analysis.format_analysis.is_ats_friendly ? 'text-green-600' : 'text-red-600'}`}>
+                        {result.ats_analysis.format_analysis.is_ats_friendly ? 'Your resume is ATS-friendly' : 'Your resume needs formatting improvements'}
+                      </p>
+                      <ul className="mt-2 space-y-1 list-disc list-inside">
+                        {result.ats_analysis.format_analysis.format_issues.map((issue, i) => (
+                          <li key={i} className="text-red-600">{issue}</li>
+                        ))}
+                      </ul>
+                      <ul className="mt-2 space-y-1 list-disc list-inside">
+                        {result.ats_analysis.format_analysis.recommendations.map((rec, i) => (
+                          <li key={i} className="text-blue-600">{rec}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Content Analysis */}
+                  <div>
+                    <h4 className="font-semibold">Content Analysis</h4>
+                    <div className="mt-2 space-y-2">
+                      {Object.entries(result.ats_analysis.content_analysis.section_completeness).map(([section, score]) => (
+                        <div key={section}>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">{section}</span>
+                            <span className="text-sm">{score}%</span>
+                          </div>
+                          <Progress value={score} className="h-2" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Optimization Tips */}
+                  <div>
+                    <h4 className="font-semibold">Optimization Tips</h4>
+                    <ul className="mt-2 space-y-1 list-disc list-inside">
+                      {result.ats_analysis.optimization_tips.map((tip, i) => (
+                        <li key={i}>{tip}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
-

@@ -15,4 +15,4 @@ router.register(r'ats-review', ATSReviewViewSet, basename='ats-review')
 
 urlpatterns = [
     path('', include(router.urls)),
-] 
+]

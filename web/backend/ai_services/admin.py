@@ -1,42 +1,36 @@
 from django.contrib import admin
-from .models import ResumeAnalysis, InterviewPreparation, CareerRoadmap, ATSReview
+from .models import ResumeAnalysis, ATSReview, InterviewPreparation, CareerRoadmap
 
 @admin.register(ResumeAnalysis)
 class ResumeAnalysisAdmin(admin.ModelAdmin):
-    list_display = ('user', 'job', 'created_at', 'status')
-    list_filter = ('status', 'created_at')
-    search_fields = ('user__email', 'job__title')
-    date_hierarchy = 'created_at'
-
-@admin.register(InterviewPreparation)
-class InterviewPreparationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'job', 'created_at', 'status')
-    list_filter = ('status', 'created_at')
-    search_fields = ('user__email', 'job__title')
-    date_hierarchy = 'created_at'
-
-@admin.register(CareerRoadmap)
-class CareerRoadmapAdmin(admin.ModelAdmin):
-    list_display = ('user', 'created_at', 'status')
-    list_filter = ('status', 'created_at')
+    list_display = ('user', 'score', 'created_at')
+    list_filter = ('created_at',)
     search_fields = ('user__email',)
-    date_hierarchy = 'created_at'
+    readonly_fields = ('analysis', 'score')
 
 @admin.register(ATSReview)
 class ATSReviewAdmin(admin.ModelAdmin):
-    list_display = ('user', 'job', 'ats_score', 'created_at')
-    list_filter = ('created_at', 'ats_score')
-    search_fields = ('user__email', 'job__title', 'job__company__name')
-    readonly_fields = ('created_at', 'updated_at')
-    
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('user', 'job', 'job__company')
-    
-    def has_add_permission(self, request):
-        return False  # ATS reviews should only be created through the API
-    
-    def has_change_permission(self, request, obj=None):
-        return False  # ATS reviews should not be modified through admin
-    
-    def has_delete_permission(self, request, obj=None):
-        return True  # Allow deletion of ATS reviews 
+    list_display = ('user', 'score', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__email',)
+    readonly_fields = ('analysis', 'score')
+
+@admin.register(InterviewPreparation)
+class InterviewPreparationAdmin(admin.ModelAdmin):
+    list_display = ('user', 'job_title', 'company', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__email', 'job_title', 'company')
+    readonly_fields = (
+        'preparation_content', 'common_questions',
+        'technical_questions', 'behavioral_questions', 'tips'
+    )
+
+@admin.register(CareerRoadmap)
+class CareerRoadmapAdmin(admin.ModelAdmin):
+    list_display = ('user', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__email', 'career_goals')
+    readonly_fields = (
+        'roadmap_content', 'milestones',
+        'skills_to_acquire', 'timeline'
+    )

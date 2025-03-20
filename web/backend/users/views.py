@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -11,10 +12,14 @@ from django.conf import settings
 from .serializers import (
     UserSerializer, StudentProfileSerializer, CompanyProfileSerializer,
     UserRegistrationSerializer, LoginSerializer, PasswordChangeSerializer,
-    PasswordResetSerializer, PasswordResetConfirmSerializer
+    PasswordResetSerializer, PasswordResetConfirmSerializer,
+    CustomTokenObtainPairSerializer
 )
 
 User = get_user_model()
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -27,14 +32,53 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
     def get_permissions(self):
-        if self.action == 'create':
+        if self.action in ['create', 'reset_password']:
             return [permissions.AllowAny()]
         return super().get_permissions()
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get', 'patch'])
     def me(self, request):
-        serializer = self.get_serializer(request.user)
-        return Response(serializer.data)
+        if request.method == 'GET':
+            serializer = self.get_serializer(request.user)
+            return Response(serializer.data)
+        elif request.method == 'PATCH':
+            print("PATCH request data:", request.data)  # Debug log
+            print("Request headers:", request.headers)  # Debug log
+            print("Request content type:", request.content_type)  # Debug log
+            
+            serializer = self.get_serializer(request.user, data=request.data, partial=True)
+            if serializer.is_valid():
+                print("Data is valid, saving...")  # Debug log
+                instance = serializer.save()
+                print("Saved instance:", instance.__dict__)  # Debug log
+                return Response(serializer.data)
+            
+            print("Validation errors:", serializer.errors)  # Debug log
+            return Response(serializer.errors, status=400)
+
+    @action(detail=False, methods=['post'])
+    def reset_password(self, request):
+        serializer = PasswordResetSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            try:
+                user = User.objects.get(email=email)
+                token = default_token_generator.make_token(user)
+                uid = urlsafe_base64_encode(force_bytes(user.pk))
+                reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}&uid={uid}"
+                
+                send_mail(
+                    'Password Reset',
+                    f'Click here to reset your password: {reset_url}',
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
+                return Response({"detail": "Password reset email has been sent."})
+            except User.DoesNotExist:
+                pass
+            return Response({"detail": "If an account exists with this email, a password reset link has been sent."})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class StudentProfileViewSet(viewsets.ModelViewSet):
     serializer_class = StudentProfileSerializer
@@ -65,10 +109,48 @@ class LoginView(APIView):
         if serializer.is_valid():
             user = serializer.validated_data['user']
             login(request, user)
+            return Response(UserSerializer(user).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class CompanyLoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = LoginSerializer
+
+    def post(self, request):
+        print(f"Company login request data: {request.data}")
+        # Print all companies in the database
+        companies = User.objects.filter(user_type=User.UserType.COMPANY)
+        print(f"All companies in database: {[{'email': c.email, 'username': c.username, 'company_name': c.company_name} for c in companies]}")
+        
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            if user.user_type != User.UserType.COMPANY:
+                return Response({'detail': 'Invalid login for company.'}, status=status.HTTP_403_FORBIDDEN)
+
+            login(request, user)
+            token = CustomTokenObtainPairSerializer.get_token(user)
             return Response({
-                'user': UserSerializer(user).data,
-                'message': 'Successfully logged in'
+                'access': str(token.access_token),
+                'refresh': str(token)
             })
+        print(f"Company login validation errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class CompanyRegistrationView(APIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = UserRegistrationSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save(user_type=User.UserType.COMPANY)
+            login(request, user)
+            token = CustomTokenObtainPairSerializer.get_token(user)
+            return Response({
+                'access': str(token.access_token),
+                'refresh': str(token)
+            }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class LogoutView(APIView):
@@ -76,7 +158,7 @@ class LogoutView(APIView):
 
     def post(self, request):
         logout(request)
-        return Response({'message': 'Successfully logged out'})
+        return Response({"detail": "Successfully logged out."})
 
 class PasswordChangeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -89,11 +171,8 @@ class PasswordChangeView(APIView):
             if user.check_password(serializer.validated_data['old_password']):
                 user.set_password(serializer.validated_data['new_password'])
                 user.save()
-                return Response({'message': 'Password successfully changed'})
-            return Response(
-                {'old_password': 'Invalid password'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+                return Response({"detail": "Password successfully changed."})
+            return Response({"detail": "Invalid old password."}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetView(APIView):
@@ -108,21 +187,18 @@ class PasswordResetView(APIView):
                 user = User.objects.get(email=email)
                 token = default_token_generator.make_token(user)
                 uid = urlsafe_base64_encode(force_bytes(user.pk))
-                reset_url = f"{settings.FRONTEND_URL}/reset-password/{uid}/{token}"
+                reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}&uid={uid}"
                 
                 send_mail(
-                    'Password Reset Request',
-                    f'Click the following link to reset your password: {reset_url}',
+                    'Password Reset',
+                    f'Click here to reset your password: {reset_url}',
                     settings.DEFAULT_FROM_EMAIL,
                     [email],
                     fail_silently=False,
                 )
-                return Response({'message': 'Password reset email sent'})
             except User.DoesNotExist:
-                return Response(
-                    {'email': 'User with this email does not exist'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                pass
+            return Response({"detail": "If an account exists with this email, a password reset link has been sent."})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetConfirmView(APIView):
@@ -135,19 +211,12 @@ class PasswordResetConfirmView(APIView):
             try:
                 uid = force_str(urlsafe_base64_decode(serializer.validated_data['uid']))
                 user = User.objects.get(pk=uid)
-                token = serializer.validated_data['token']
-                
-                if default_token_generator.check_token(user, token):
-                    user.set_password(serializer.validated_data['new_password'])
-                    user.save()
-                    return Response({'message': 'Password successfully reset'})
-                return Response(
-                    {'token': 'Invalid token'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
             except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-                return Response(
-                    {'uid': 'Invalid user ID'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST) 
+                return Response({"detail": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if default_token_generator.check_token(user, serializer.validated_data['token']):
+                user.set_password(serializer.validated_data['new_password'])
+                user.save()
+                return Response({"detail": "Password has been reset."})
+            return Response({"detail": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,9 +9,107 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Globe, MapPin, Building, Upload, Save } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import api from "@/lib/api"
+
+interface CompanyProfile {
+  id: number;
+  username: string;
+  email: string;
+  phone_number: string;
+  company_name: string;
+  company_description: string;
+  company_website: string;
+  company_logo: string | null;
+}
 
 export default function CompanyProfile() {
   const [isEditing, setIsEditing] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<CompanyProfile | null>(null)
+  const [formData, setFormData] = useState<Partial<CompanyProfile>>({})
+  const { toast } = useToast()
+
+  useEffect(() => {
+    // Check if we have the profile in localStorage
+    const storedProfile = localStorage.getItem('companyProfile');
+    
+    if (storedProfile) {
+      try {
+        const parsedProfile = JSON.parse(storedProfile) as CompanyProfile;
+        setProfile(parsedProfile);
+        setFormData(parsedProfile);
+        console.log('Using stored profile:', parsedProfile);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error parsing stored profile:', error);
+        // If there's an error parsing, fetch from server
+        fetchProfile();
+      }
+    } else {
+      // If not in localStorage, fetch it
+      fetchProfile();
+    }
+  }, []);
+  
+  // Fetch the latest profile data
+  const fetchProfile = async () => {
+    try {
+      // Note: This may fail due to database connection issues
+      const response = await api.get('/users/me/')
+      console.log('Fetched company profile:', response.data)
+      const profileData = response.data as CompanyProfile;
+      setProfile(profileData)
+      setFormData(profileData)
+      localStorage.setItem('companyProfile', JSON.stringify(profileData))
+    } catch (error) {
+      console.error('Error fetching profile:', error)
+      toast({
+        title: "Error",
+        description: "Could not load your profile. Please try again later.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target
+    setFormData(prev => ({ ...prev, [id]: value }))
+  }
+
+  const handleSelectChange = (id: string, value: string) => {
+    setFormData(prev => ({ ...prev, [id]: value }))
+  }
+
+  const handleSave = async () => {
+    try {
+      setLoading(true)
+      const response = await api.patch('/users/me/', formData)
+      const updatedProfile = response.data as CompanyProfile;
+      setProfile(updatedProfile)
+      localStorage.setItem('companyProfile', JSON.stringify(updatedProfile))
+      setIsEditing(false)
+      toast({
+        title: "Success",
+        description: "Your company profile has been updated successfully.",
+      })
+    } catch (error) {
+      console.error('Error updating profile:', error)
+      toast({
+        title: "Error",
+        description: "Could not update your profile. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-64">Loading profile...</div>
+  }
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -23,58 +121,55 @@ export default function CompanyProfile() {
         <CardContent className="space-y-4">
           <div className="flex flex-col items-center space-y-4">
             <Avatar className="h-24 w-24">
-              <AvatarImage src="/placeholder.svg?height=96&width=96" alt="Company Logo" />
-              <AvatarFallback>TC</AvatarFallback>
+              {profile?.company_logo ? (
+                <AvatarImage src={profile.company_logo} alt={profile.company_name} />
+              ) : (
+                <AvatarFallback>{profile?.company_name?.substring(0, 2).toUpperCase() || 'CO'}</AvatarFallback>
+              )}
             </Avatar>
-            <Button variant="outline" size="sm" className="gap-1">
+            <Button variant="outline" size="sm" className="gap-1" disabled={!isEditing}>
               <Upload className="h-4 w-4" /> Upload Logo
             </Button>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="name">Company Name</Label>
-            <Input id="name" defaultValue="TechCorp Solutions" readOnly={!isEditing} />
+            <Label htmlFor="company_name">Company Name</Label>
+            <Input 
+              id="company_name" 
+              value={formData.company_name || ''} 
+              onChange={handleChange} 
+              readOnly={!isEditing} 
+            />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="website">Website</Label>
+            <Label htmlFor="company_website">Website</Label>
             <div className="flex items-center space-x-2">
               <Globe className="h-4 w-4 text-muted-foreground" />
-              <Input id="website" defaultValue="https://techcorp.com" readOnly={!isEditing} />
+              <Input 
+                id="company_website" 
+                value={formData.company_website || ''} 
+                onChange={handleChange} 
+                readOnly={!isEditing} 
+              />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="industry">Industry</Label>
-            <Select disabled={!isEditing} defaultValue="software">
-              <SelectTrigger id="industry">
-                <SelectValue placeholder="Select Industry" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="software">Software Development</SelectItem>
-                <SelectItem value="finance">Finance & Banking</SelectItem>
-                <SelectItem value="healthcare">Healthcare</SelectItem>
-                <SelectItem value="education">Education</SelectItem>
-                <SelectItem value="ecommerce">E-Commerce</SelectItem>
-                <SelectItem value="manufacturing">Manufacturing</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label htmlFor="email">Email</Label>
+            <Input 
+              id="email" 
+              type="email" 
+              value={formData.email || ''} 
+              readOnly={true} 
+            />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="size">Company Size</Label>
-            <Select disabled={!isEditing} defaultValue="medium">
-              <SelectTrigger id="size">
-                <SelectValue placeholder="Select Company Size" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="startup">Startup (1-10 employees)</SelectItem>
-                <SelectItem value="small">Small (11-50 employees)</SelectItem>
-                <SelectItem value="medium">Medium (51-200 employees)</SelectItem>
-                <SelectItem value="large">Large (201-500 employees)</SelectItem>
-                <SelectItem value="enterprise">Enterprise (500+ employees)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="founded">Founded Year</Label>
-            <Input id="founded" type="number" defaultValue="2010" readOnly={!isEditing} />
+            <Label htmlFor="phone_number">Contact Phone</Label>
+            <Input 
+              id="phone_number" 
+              type="tel" 
+              value={formData.phone_number || ''} 
+              onChange={handleChange} 
+              readOnly={!isEditing} 
+            />
           </div>
         </CardContent>
         <CardFooter className="flex justify-between">
@@ -82,7 +177,7 @@ export default function CompanyProfile() {
             {isEditing ? "Cancel" : "Edit Profile"}
           </Button>
           {isEditing && (
-            <Button className="gap-1">
+            <Button className="gap-1" onClick={handleSave} disabled={loading}>
               <Save className="h-4 w-4" /> Save Changes
             </Button>
           )}
@@ -96,58 +191,20 @@ export default function CompanyProfile() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="about">About the Company</Label>
+              <Label htmlFor="company_description">About the Company</Label>
               <Textarea
-                id="about"
+                id="company_description"
                 className="min-h-[120px]"
-                defaultValue="TechCorp Solutions is a leading software development company specializing in enterprise solutions, cloud services, and mobile applications. Founded in 2010, we've grown to become a trusted partner for businesses across various industries."
+                value={formData.company_description || ''}
+                onChange={handleChange}
                 readOnly={!isEditing}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="culture">Company Culture</Label>
-              <Textarea
-                id="culture"
-                className="min-h-[120px]"
-                defaultValue="At TechCorp, we foster a collaborative and innovative environment where creativity thrives. We believe in work-life balance, continuous learning, and empowering our employees to take ownership of their projects."
-                readOnly={!isEditing}
-              />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Location & Contact</CardTitle>
-            <CardDescription>Update your company's location and contact information.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="headquarters">Headquarters</Label>
-              <div className="flex items-center space-x-2">
-                <Building className="h-4 w-4 text-muted-foreground" />
-                <Input id="headquarters" defaultValue="Bangalore, India" readOnly={!isEditing} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="address">Address</Label>
-              <div className="flex items-center space-x-2">
-                <MapPin className="h-4 w-4 text-muted-foreground" />
-                <Input id="address" defaultValue="123 Tech Park, Electronic City, Bangalore" readOnly={!isEditing} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Contact Email</Label>
-              <Input id="email" type="email" defaultValue="careers@techcorp.com" readOnly={!isEditing} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Contact Phone</Label>
-              <Input id="phone" type="tel" defaultValue="+91 80 1234 5678" readOnly={!isEditing} />
             </div>
           </CardContent>
           <CardFooter>
             {isEditing && (
-              <Button className="w-full gap-1">
-                <Save className="h-4 w-4" /> Save Contact Info
+              <Button className="w-full gap-1" onClick={handleSave} disabled={loading}>
+                <Save className="h-4 w-4" /> Save Description
               </Button>
             )}
           </CardFooter>
@@ -156,4 +213,3 @@ export default function CompanyProfile() {
     </div>
   )
 }
-

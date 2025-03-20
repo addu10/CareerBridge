@@ -1,82 +1,88 @@
 from django.db import models
-from django.utils.translation import gettext_lazy as _
-from users.models import User
-from jobs.models import Job
 from django.contrib.auth import get_user_model
+from django.core.validators import MinValueValidator, MaxValueValidator
+import uuid
+import os
 
 User = get_user_model()
 
-class ResumeAnalysis(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('processing', 'Processing'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-    ]
+def get_resume_upload_path(instance, filename):
+    """Generate a unique path for resume uploads"""
+    ext = filename.split('.')[-1]
+    filename = f"{uuid.uuid4()}.{ext}"
+    return os.path.join('uploads', 'resumes', filename)
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='resume_analyses')
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='resume_analyses', null=True, blank=True)
-    resume = models.FileField(upload_to='resume_analyses/')
-    analysis_result = models.JSONField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+class BaseAIAnalysis(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    resume = models.FileField(upload_to=get_resume_upload_path)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    score = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        default=0
+    )
+
+    class Meta:
+        abstract = True
+
+class ResumeAnalysis(BaseAIAnalysis):
+    analysis = models.JSONField()
+
+    class Meta:
+        verbose_name = 'Resume Analysis'
+        verbose_name_plural = 'Resume Analyses'
+        ordering = ['-created_at']
 
     def __str__(self):
-        return f"Resume Analysis for {self.user.email} - {self.job.title if self.job else 'General'}"
+        return f"Resume Analysis for {self.user.email} - {self.created_at.strftime('%Y-%m-%d')}"
+
+class ATSReview(BaseAIAnalysis):
+    job_description = models.TextField()
+    analysis = models.JSONField()
+
+    class Meta:
+        verbose_name = 'ATS Review'
+        verbose_name_plural = 'ATS Reviews'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"ATS Review for {self.user.email} - {self.created_at.strftime('%Y-%m-%d')}"
 
 class InterviewPreparation(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('processing', 'Processing'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-    ]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='interview_preparations')
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='interview_preparations', null=True, blank=True)
-    preparation_content = models.JSONField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"Interview Preparation for {self.user.email} - {self.job.title if self.job else 'General'}"
-
-class CareerRoadmap(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('processing', 'Processing'),
-        ('completed', 'Completed'),
-        ('failed', 'Failed'),
-    ]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='career_roadmaps')
-    roadmap_content = models.JSONField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"Career Roadmap for {self.user.email}"
-
-class ATSReview(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ats_reviews')
-    job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='ats_reviews')
-    resume = models.FileField(upload_to='resumes/ats_reviews/')
-    ats_score = models.FloatField()
-    matched_keywords = models.JSONField()
-    missing_keywords = models.JSONField()
-    format_analysis = models.JSONField()
-    section_completeness = models.JSONField()
-    optimization_tips = models.JSONField()
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    job_title = models.CharField(max_length=255)
+    company = models.CharField(max_length=255)
+    preparation_content = models.JSONField()
+    common_questions = models.JSONField()
+    technical_questions = models.JSONField()
+    behavioral_questions = models.JSONField()
+    tips = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = 'Interview Preparation'
+        verbose_name_plural = 'Interview Preparations'
         ordering = ['-created_at']
-        verbose_name = 'ATS Review'
-        verbose_name_plural = 'ATS Reviews'
 
     def __str__(self):
-        return f"ATS Review for {self.user.email} - {self.job.title}" 
+        return f"Interview Prep for {self.user.email} - {self.job_title} at {self.company}"
+
+class CareerRoadmap(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    career_goals = models.TextField()
+    preferences = models.JSONField(null=True, blank=True)
+    roadmap_content = models.JSONField()
+    milestones = models.JSONField()
+    skills_to_acquire = models.JSONField()
+    timeline = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Career Roadmap'
+        verbose_name_plural = 'Career Roadmaps'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Career Roadmap for {self.user.email} - {self.created_at.strftime('%Y-%m-%d')}"

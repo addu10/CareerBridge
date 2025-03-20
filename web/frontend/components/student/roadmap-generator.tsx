@@ -10,27 +10,202 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Brain, BookOpen, Code, Award, Sparkles, Download } from "lucide-react"
+import { generateCareerRoadmap } from "@/lib/api"
+import { useToast } from "@/components/ui/use-toast"
+
+// Define interfaces for the roadmap data structure
+interface Phase {
+  duration: string;
+  skills: string[];
+  icon?: any;
+}
+
+interface Milestone {
+  title: string;
+  description: string;
+}
+
+interface Skill {
+  name: string;
+  priority: 'High' | 'Medium' | 'Low';
+  progress: number;
+}
+
+interface SkillCategory {
+  category: string;
+  skills: Skill[];
+}
+
+interface Project {
+  title: string;
+  description: string;
+  features: string[];
+}
+
+interface Resource {
+  title: string;
+  description: string;
+}
+
+interface ResourceCategory {
+  category: string;
+  resources: Resource[];
+}
+
+interface RoadmapContent {
+  title: string;
+  description: string;
+  phases: Phase[];
+  milestones: Milestone[];
+  skills: SkillCategory[];
+  projects: Project[];
+  resources: ResourceCategory[];
+}
+
+interface Timeline {
+  short_term: string[];
+  medium_term: string[];
+  long_term: string[];
+}
+
+interface RoadmapData {
+  roadmap_content: RoadmapContent | string;
+  milestones: string[];
+  skills_to_acquire: string[];
+  timeline: Timeline;
+}
 
 export default function RoadmapGenerator() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isGenerated, setIsGenerated] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [roadmapData, setRoadmapData] = useState<RoadmapData | null>(null)
+  const [careerGoal, setCareerGoal] = useState("fullstack")
+  const [experienceLevel, setExperienceLevel] = useState("intermediate")
+  const [timeline, setTimeline] = useState("6months")
+  const [currentSkills, setCurrentSkills] = useState("JavaScript, HTML, CSS, React basics, Git")
+  const [interests, setInterests] = useState("Cloud computing, React Native, GraphQL")
+  const { toast } = useToast()
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setIsGenerating(true)
     setProgress(0)
 
+    // Start progress animation
     const interval = setInterval(() => {
       setProgress((prev) => {
-        if (prev >= 100) {
+        if (prev >= 90) {
           clearInterval(interval)
-          setIsGenerating(false)
-          setIsGenerated(true)
-          return 100
+          return 90
         }
         return prev + 5
       })
     }, 200)
+
+    try {
+      // Parse skills into an array
+      const skillsArray = currentSkills.split(',').map(skill => skill.trim()).filter(Boolean)
+      
+      console.log("Sending roadmap request with data:", {
+        current_skills: skillsArray,
+        target_role: careerGoal,
+        experience_level: experienceLevel
+      });
+      
+      // Call the API
+      const result = await generateCareerRoadmap({
+        current_skills: skillsArray,
+        target_role: careerGoal,
+        experience_level: experienceLevel
+      })
+      
+      console.log("Received roadmap response:", result);
+      
+      // Set the roadmap data
+      setRoadmapData(ensureValidRoadmapData(result as RoadmapData))
+      
+      // Complete the progress
+      setProgress(100)
+      setIsGenerating(false)
+      setIsGenerated(true)
+      
+    } catch (error) {
+      console.error("Error generating roadmap:", error)
+      toast({
+        title: "Error",
+        description: "Failed to generate roadmap. Please try again.",
+        variant: "destructive"
+      })
+      setIsGenerating(false)
+      clearInterval(interval)
+      setProgress(0)
+    }
+  }
+
+  const getContent = (): string => {
+    if (!roadmapData) {
+      return "Based on your current skills and goals, we've created a roadmap to help you achieve your career objectives.";
+    }
+    
+    if (typeof roadmapData.roadmap_content === 'string') {
+      return roadmapData.roadmap_content;
+    }
+    
+    if (typeof roadmapData.roadmap_content === 'object' && roadmapData.roadmap_content.description) {
+      return roadmapData.roadmap_content.description;
+    }
+    
+    return "Based on your current skills and goals, we've created a roadmap to help you achieve your career objectives.";
+  }
+
+  const getTitle = (): string => {
+    if (!roadmapData) return "Career";
+    
+    if (typeof roadmapData.roadmap_content === 'object' && roadmapData.roadmap_content.title) {
+      return roadmapData.roadmap_content.title;
+    }
+    
+    return "Career";
+  }
+
+  // Helper function to ensure we have valid data to display
+  const ensureValidRoadmapData = (data: any): RoadmapData => {
+    if (!data) return createDefaultRoadmapData();
+    
+    // Create a new object with default values for missing properties
+    return {
+      roadmap_content: data.roadmap_content || createDefaultRoadmapContent(),
+      milestones: data.milestones || [],
+      skills_to_acquire: data.skills_to_acquire || [],
+      timeline: data.timeline || { short_term: [], medium_term: [], long_term: [] }
+    };
+  }
+
+  // Create default roadmap content
+  const createDefaultRoadmapContent = (): RoadmapContent => {
+    return {
+      title: "Career Roadmap",
+      description: "Based on your current skills and goals, we've created a roadmap to help you achieve your career objectives.",
+      phases: [],
+      milestones: [],
+      skills: [],
+      projects: [],
+      resources: []
+    };
+  }
+
+  // Create a complete default roadmap data structure
+  const createDefaultRoadmapData = (): RoadmapData => {
+    return {
+      roadmap_content: createDefaultRoadmapContent(),
+      milestones: [],
+      skills_to_acquire: [],
+      timeline: {
+        short_term: [],
+        medium_term: [],
+        long_term: []
+      }
+    };
   }
 
   return (
@@ -49,7 +224,10 @@ export default function RoadmapGenerator() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="career-goal">Career Goal</Label>
-                    <Select defaultValue="fullstack">
+                    <Select 
+                      defaultValue="fullstack" 
+                      onValueChange={(value) => setCareerGoal(value)}
+                    >
                       <SelectTrigger id="career-goal">
                         <SelectValue placeholder="Select your career goal" />
                       </SelectTrigger>
@@ -67,7 +245,10 @@ export default function RoadmapGenerator() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="experience">Experience Level</Label>
-                    <Select defaultValue="intermediate">
+                    <Select 
+                      defaultValue="intermediate"
+                      onValueChange={(value) => setExperienceLevel(value)}
+                    >
                       <SelectTrigger id="experience">
                         <SelectValue placeholder="Select your experience level" />
                       </SelectTrigger>
@@ -80,7 +261,10 @@ export default function RoadmapGenerator() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="timeline">Timeline</Label>
-                    <Select defaultValue="6months">
+                    <Select 
+                      defaultValue="6months"
+                      onValueChange={(value) => setTimeline(value)}
+                    >
                       <SelectTrigger id="timeline">
                         <SelectValue placeholder="Select your timeline" />
                       </SelectTrigger>
@@ -101,6 +285,7 @@ export default function RoadmapGenerator() {
                       placeholder="List your current skills, separated by commas..."
                       className="min-h-[120px]"
                       defaultValue="JavaScript, HTML, CSS, React basics, Git"
+                      onChange={(e) => setCurrentSkills(e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
@@ -109,6 +294,7 @@ export default function RoadmapGenerator() {
                       id="interests"
                       placeholder="Any specific technologies or areas you're interested in..."
                       defaultValue="Cloud computing, React Native, GraphQL"
+                      onChange={(e) => setInterests(e.target.value)}
                     />
                   </div>
                 </div>
@@ -133,161 +319,82 @@ export default function RoadmapGenerator() {
               <div className="p-4 bg-primary/10 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles className="h-5 w-5 text-primary" />
-                  <h3 className="font-medium">Your Personalized Full Stack Developer Roadmap</h3>
+                  <h3 className="font-medium">Your Personalized {getTitle()} Roadmap</h3>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Based on your current skills and goals, we've created a 6-month roadmap to help you become a Full
-                  Stack Developer with a focus on cloud computing and React Native.
+                  {getContent()}
                 </p>
               </div>
 
               <Tabs defaultValue="overview">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="skills">Skills Path</TabsTrigger>
                   <TabsTrigger value="projects">Projects</TabsTrigger>
                   <TabsTrigger value="resources">Resources</TabsTrigger>
+                  <TabsTrigger value="timeline">Timeline</TabsTrigger>
                 </TabsList>
                 <TabsContent value="overview" className="space-y-4 mt-4">
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <BookOpen className="h-5 w-5 text-blue-500" /> Phase 1
-                          </CardTitle>
-                          <CardDescription>Months 1-2</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <ul className="space-y-2 text-sm">
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                              <span>Advanced JavaScript & ES6+</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                              <span>React Advanced Concepts</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                              <span>Node.js Fundamentals</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                              <span>RESTful API Design</span>
-                            </li>
-                          </ul>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <Code className="h-5 w-5 text-green-500" /> Phase 2
-                          </CardTitle>
-                          <CardDescription>Months 3-4</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <ul className="space-y-2 text-sm">
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                              <span>Express.js & MongoDB</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                              <span>GraphQL Implementation</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                              <span>React Native Basics</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                              <span>AWS Fundamentals</span>
-                            </li>
-                          </ul>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <Award className="h-5 w-5 text-purple-500" /> Phase 3
-                          </CardTitle>
-                          <CardDescription>Months 5-6</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <ul className="space-y-2 text-sm">
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                              <span>Full Stack Projects</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                              <span>Cloud Deployment</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                              <span>CI/CD Pipelines</span>
-                            </li>
-                            <li className="flex items-center gap-2">
-                              <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                              <span>Portfolio Building</span>
-                            </li>
-                          </ul>
-                        </CardContent>
-                      </Card>
+                      {roadmapData && typeof roadmapData.roadmap_content === 'object' && 
+                       Array.isArray(roadmapData.roadmap_content.phases) && 
+                       roadmapData.roadmap_content.phases.length > 0 ? (
+                        roadmapData.roadmap_content.phases.map((phase: Phase, index: number) => (
+                          <Card key={index}>
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-lg flex items-center gap-2">
+                                {phase.icon && <phase.icon className="h-5 w-5 text-blue-500" />}
+                                Phase {index + 1}
+                              </CardTitle>
+                              <CardDescription>{phase.duration || `Phase ${index + 1}`}</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              <ul className="space-y-2 text-sm">
+                                {Array.isArray(phase.skills) && phase.skills.map((skill: string, index: number) => (
+                                  <li key={index} className="flex items-center gap-2">
+                                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                                    <span>{skill}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </CardContent>
+                          </Card>
+                        ))
+                      ) : (
+                        <Card className="col-span-3">
+                          <CardContent className="p-6 text-center text-muted-foreground">
+                            No phases defined in this roadmap.
+                          </CardContent>
+                        </Card>
+                      )}
                     </div>
 
                     <Card>
                       <CardHeader>
                         <CardTitle>Key Milestones</CardTitle>
-                        <CardDescription>Important achievements to aim for during your journey.</CardDescription>
                       </CardHeader>
                       <CardContent>
                         <ul className="space-y-4">
-                          <li className="flex items-start gap-3">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-background">
-                              <span className="text-sm">1</span>
-                            </div>
-                            <div>
-                              <h4 className="font-medium">Build a Full Stack Web Application</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Create a complete web app with React frontend, Node.js backend, and MongoDB database.
-                              </p>
-                            </div>
-                          </li>
-                          <li className="flex items-start gap-3">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-background">
-                              <span className="text-sm">2</span>
-                            </div>
-                            <div>
-                              <h4 className="font-medium">Develop a Mobile App with React Native</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Build a cross-platform mobile application that connects to your backend services.
-                              </p>
-                            </div>
-                          </li>
-                          <li className="flex items-start gap-3">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-background">
-                              <span className="text-sm">3</span>
-                            </div>
-                            <div>
-                              <h4 className="font-medium">Deploy Applications to AWS Cloud</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Learn to deploy and scale your applications using AWS services like EC2, S3, and Lambda.
-                              </p>
-                            </div>
-                          </li>
-                          <li className="flex items-start gap-3">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-background">
-                              <span className="text-sm">4</span>
-                            </div>
-                            <div>
-                              <h4 className="font-medium">Create a Professional Portfolio</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Showcase your projects, skills, and achievements in a professional portfolio website.
-                              </p>
-                            </div>
-                          </li>
+                          {roadmapData && typeof roadmapData.roadmap_content === 'object' && 
+                           Array.isArray(roadmapData.roadmap_content.milestones) && 
+                           roadmapData.roadmap_content.milestones.length > 0 ? (
+                            roadmapData.roadmap_content.milestones.map((milestone: Milestone, index: number) => (
+                              <li key={index} className="flex items-start gap-3">
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-background">
+                                  <span className="text-sm">{index + 1}</span>
+                                </div>
+                                <div>
+                                  <h4 className="font-medium">{milestone.title}</h4>
+                                  <p className="text-sm text-muted-foreground">{milestone.description}</p>
+                                </div>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="text-center text-muted-foreground">
+                              No milestones defined in this roadmap.
+                            </li>
+                          )}
                         </ul>
                       </CardContent>
                     </Card>
@@ -296,119 +403,46 @@ export default function RoadmapGenerator() {
                 <TabsContent value="skills" className="space-y-4 mt-4">
                   <Card>
                     <CardHeader>
-                      <CardTitle>Skills Development Path</CardTitle>
-                      <CardDescription>Recommended skills to learn in order of priority.</CardDescription>
+                      <CardTitle>Skills to Acquire</CardTitle>
+                      <CardDescription>Prioritized skills based on your career goals</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-6">
-                        <div>
-                          <h3 className="font-medium mb-2">Frontend Development</h3>
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">Advanced JavaScript & ES6+</span>
-                                <span className="text-sm text-muted-foreground">High Priority</span>
+                        {roadmapData && typeof roadmapData.roadmap_content === 'object' && 
+                         Array.isArray(roadmapData.roadmap_content.skills) && 
+                         roadmapData.roadmap_content.skills.length > 0 ? (
+                          roadmapData.roadmap_content.skills.map((skillCategory: SkillCategory, index: number) => (
+                            <div key={index}>
+                              <h3 className="font-medium mb-2">{skillCategory.category}</h3>
+                              <div className="space-y-3">
+                                {Array.isArray(skillCategory.skills) && skillCategory.skills.map((skill: Skill, index: number) => (
+                                  <div key={index}>
+                                    <div className="flex justify-between mb-1">
+                                      <span className="text-sm">{skill.name}</span>
+                                      <span className="text-sm text-muted-foreground">{skill.priority}</span>
+                                    </div>
+                                    <Progress value={skill.progress || 0} className="h-2" />
+                                  </div>
+                                ))}
                               </div>
-                              <Progress value={100} className="h-2" />
                             </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">React Hooks & Context API</span>
-                                <span className="text-sm text-muted-foreground">High Priority</span>
+                          ))
+                        ) : (
+                          <div className="text-center text-muted-foreground p-4">
+                            {Array.isArray(roadmapData?.skills_to_acquire) && roadmapData.skills_to_acquire.length > 0 ? (
+                              <div>
+                                <h3 className="font-medium mb-2">Skills to Acquire</h3>
+                                <ul className="list-disc pl-5 space-y-1">
+                                  {roadmapData.skills_to_acquire.map((skill, index) => (
+                                    <li key={index}>{skill}</li>
+                                  ))}
+                                </ul>
                               </div>
-                              <Progress value={100} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">State Management (Redux/MobX)</span>
-                                <span className="text-sm text-muted-foreground">Medium Priority</span>
-                              </div>
-                              <Progress value={70} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">React Native</span>
-                                <span className="text-sm text-muted-foreground">Medium Priority</span>
-                              </div>
-                              <Progress value={70} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">TypeScript</span>
-                                <span className="text-sm text-muted-foreground">Medium Priority</span>
-                              </div>
-                              <Progress value={70} className="h-2" />
-                            </div>
+                            ) : (
+                              <p>No skills defined in this roadmap.</p>
+                            )}
                           </div>
-                        </div>
-
-                        <div>
-                          <h3 className="font-medium mb-2">Backend Development</h3>
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">Node.js & Express.js</span>
-                                <span className="text-sm text-muted-foreground">High Priority</span>
-                              </div>
-                              <Progress value={100} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">RESTful API Design</span>
-                                <span className="text-sm text-muted-foreground">High Priority</span>
-                              </div>
-                              <Progress value={100} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">MongoDB & Mongoose</span>
-                                <span className="text-sm text-muted-foreground">High Priority</span>
-                              </div>
-                              <Progress value={100} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">GraphQL</span>
-                                <span className="text-sm text-muted-foreground">Medium Priority</span>
-                              </div>
-                              <Progress value={70} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">Authentication & Authorization</span>
-                                <span className="text-sm text-muted-foreground">High Priority</span>
-                              </div>
-                              <Progress value={100} className="h-2" />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <h3 className="font-medium mb-2">Cloud & DevOps</h3>
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">AWS Fundamentals</span>
-                                <span className="text-sm text-muted-foreground">Medium Priority</span>
-                              </div>
-                              <Progress value={70} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">Docker Basics</span>
-                                <span className="text-sm text-muted-foreground">Low Priority</span>
-                              </div>
-                              <Progress value={40} className="h-2" />
-                            </div>
-                            <div>
-                              <div className="flex justify-between mb-1">
-                                <span className="text-sm">CI/CD Pipelines</span>
-                                <span className="text-sm text-muted-foreground">Low Priority</span>
-                              </div>
-                              <Progress value={40} className="h-2" />
-                            </div>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -417,75 +451,32 @@ export default function RoadmapGenerator() {
                   <Card>
                     <CardHeader>
                       <CardTitle>Recommended Projects</CardTitle>
-                      <CardDescription>
-                        Build these projects to apply your skills and enhance your portfolio.
-                      </CardDescription>
+                      <CardDescription>Hands-on projects to build your portfolio</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-6">
-                        <div className="p-4 border rounded-lg">
-                          <h3 className="font-medium mb-2">1. Full Stack Social Media Dashboard</h3>
-                          <p className="text-sm text-muted-foreground mb-3">
-                            Create a social media analytics dashboard with React, Node.js, and MongoDB.
-                          </p>
-                          <div className="text-sm">
-                            <p className="font-medium mb-1">Key Features:</p>
-                            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-                              <li>Real-time data visualization with charts and graphs</li>
-                              <li>User authentication and profile management</li>
-                              <li>API integration with social media platforms</li>
-                              <li>Responsive design for mobile and desktop</li>
-                            </ul>
+                        {roadmapData && typeof roadmapData.roadmap_content === 'object' && 
+                         Array.isArray(roadmapData.roadmap_content.projects) && 
+                         roadmapData.roadmap_content.projects.length > 0 ? (
+                          roadmapData.roadmap_content.projects.map((project: Project, index: number) => (
+                            <div key={index} className="p-4 border rounded-lg">
+                              <h3 className="font-medium mb-2">{project.title}</h3>
+                              <p className="text-sm text-muted-foreground mb-3">{project.description}</p>
+                              <div className="text-sm">
+                                <p className="font-medium mb-1">Key Features:</p>
+                                <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                                  {Array.isArray(project.features) && project.features.map((feature: string, index: number) => (
+                                    <li key={index}>{feature}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center text-muted-foreground p-4">
+                            No projects defined in this roadmap.
                           </div>
-                        </div>
-
-                        <div className="p-4 border rounded-lg">
-                          <h3 className="font-medium mb-2">2. E-Commerce Mobile App with React Native</h3>
-                          <p className="text-sm text-muted-foreground mb-3">
-                            Build a cross-platform e-commerce app with React Native and a Node.js backend.
-                          </p>
-                          <div className="text-sm">
-                            <p className="font-medium mb-1">Key Features:</p>
-                            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-                              <li>Product catalog with search and filtering</li>
-                              <li>Shopping cart and checkout process</li>
-                              <li>User reviews and ratings</li>
-                              <li>Push notifications for order updates</li>
-                            </ul>
-                          </div>
-                        </div>
-
-                        <div className="p-4 border rounded-lg">
-                          <h3 className="font-medium mb-2">3. Cloud-Based Task Management System</h3>
-                          <p className="text-sm text-muted-foreground mb-3">
-                            Create a task management system deployed on AWS with serverless architecture.
-                          </p>
-                          <div className="text-sm">
-                            <p className="font-medium mb-1">Key Features:</p>
-                            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-                              <li>Task creation, assignment, and tracking</li>
-                              <li>Real-time updates with WebSockets</li>
-                              <li>File uploads to S3</li>
-                              <li>Serverless functions with AWS Lambda</li>
-                            </ul>
-                          </div>
-                        </div>
-
-                        <div className="p-4 border rounded-lg">
-                          <h3 className="font-medium mb-2">4. Personal Portfolio Website</h3>
-                          <p className="text-sm text-muted-foreground mb-3">
-                            Build a professional portfolio website to showcase your projects and skills.
-                          </p>
-                          <div className="text-sm">
-                            <p className="font-medium mb-1">Key Features:</p>
-                            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-                              <li>Responsive design with modern UI/UX</li>
-                              <li>Project showcase with detailed descriptions</li>
-                              <li>Skills and experience sections</li>
-                              <li>Contact form with serverless backend</li>
-                            </ul>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -494,115 +485,123 @@ export default function RoadmapGenerator() {
                   <Card>
                     <CardHeader>
                       <CardTitle>Learning Resources</CardTitle>
-                      <CardDescription>
-                        Recommended courses, tutorials, and documentation to help you learn.
-                      </CardDescription>
+                      <CardDescription>Recommended courses, books, and tutorials</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-6">
-                        <div>
-                          <h3 className="font-medium mb-2">Online Courses</h3>
-                          <ul className="space-y-2">
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">Modern JavaScript for React Developers</h4>
-                              <p className="text-sm text-muted-foreground">
-                                A comprehensive course on ES6+ features and advanced JavaScript concepts.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">Complete React Developer Course</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Learn React, Redux, Hooks, Context API, and more with practical projects.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">Node.js, Express & MongoDB Bootcamp</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Build RESTful APIs and backend services with Node.js and MongoDB.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">React Native - The Practical Guide</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Learn to build native mobile apps for iOS and Android with React Native.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">AWS Certified Developer Associate</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Learn AWS services and prepare for the AWS Developer certification.
-                              </p>
-                            </li>
-                          </ul>
-                        </div>
-
-                        <div>
-                          <h3 className="font-medium mb-2">Books & Documentation</h3>
-                          <ul className="space-y-2">
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">You Don't Know JS (Book Series)</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Deep dive into JavaScript language mechanics and best practices.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">React Documentation</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Official React documentation with guides, API references, and examples.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">Node.js Design Patterns</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Learn advanced Node.js patterns and architectural best practices.
-                              </p>
-                            </li>
-                          </ul>
-                        </div>
-
-                        <div>
-                          <h3 className="font-medium mb-2">YouTube Channels & Blogs</h3>
-                          <ul className="space-y-2">
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">Traversy Media</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Practical tutorials on web development technologies and frameworks.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">Ben Awad</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Full stack React tutorials and project walkthroughs.
-                              </p>
-                            </li>
-                            <li className="p-3 border rounded-lg">
-                              <h4 className="font-medium">CSS-Tricks</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Articles and tutorials on frontend development and design.
-                              </p>
-                            </li>
-                          </ul>
-                        </div>
+                        {roadmapData && typeof roadmapData.roadmap_content === 'object' && 
+                         Array.isArray(roadmapData.roadmap_content.resources) && 
+                         roadmapData.roadmap_content.resources.length > 0 ? (
+                          roadmapData.roadmap_content.resources.map((resourceCategory: ResourceCategory, index: number) => (
+                            <div key={index}>
+                              <h3 className="font-medium mb-2">{resourceCategory.category}</h3>
+                              <ul className="space-y-2">
+                                {Array.isArray(resourceCategory.resources) && resourceCategory.resources.map((resource: Resource, index: number) => (
+                                  <li key={index} className="p-3 border rounded-lg">
+                                    <h4 className="font-medium">{resource.title}</h4>
+                                    <p className="text-sm text-muted-foreground">{resource.description}</p>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center text-muted-foreground p-4">
+                            No resources defined in this roadmap.
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
+                <TabsContent value="timeline" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Short-term</CardTitle>
+                        <CardDescription>0-6 months</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2 text-sm">
+                          {roadmapData && roadmapData.timeline && Array.isArray(roadmapData.timeline.short_term) && 
+                           roadmapData.timeline.short_term.length > 0 ? (
+                            roadmapData.timeline.short_term.map((goal: string, index: number) => (
+                              <li key={index} className="flex items-center gap-2">
+                                <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                                <span>{goal}</span>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="text-center text-muted-foreground">
+                              No short-term goals defined.
+                            </li>
+                          )}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Medium-term</CardTitle>
+                        <CardDescription>6-18 months</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2 text-sm">
+                          {roadmapData && roadmapData.timeline && Array.isArray(roadmapData.timeline.medium_term) && 
+                           roadmapData.timeline.medium_term.length > 0 ? (
+                            roadmapData.timeline.medium_term.map((goal: string, index: number) => (
+                              <li key={index} className="flex items-center gap-2">
+                                <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                                <span>{goal}</span>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="text-center text-muted-foreground">
+                              No medium-term goals defined.
+                            </li>
+                          )}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Long-term</CardTitle>
+                        <CardDescription>18+ months</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2 text-sm">
+                          {roadmapData && roadmapData.timeline && Array.isArray(roadmapData.timeline.long_term) && 
+                           roadmapData.timeline.long_term.length > 0 ? (
+                            roadmapData.timeline.long_term.map((goal: string, index: number) => (
+                              <li key={index} className="flex items-center gap-2">
+                                <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                                <span>{goal}</span>
+                              </li>
+                            ))
+                          ) : (
+                            <li className="text-center text-muted-foreground">
+                              No long-term goals defined.
+                            </li>
+                          )}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
               </Tabs>
+
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setIsGenerated(false)}>Edit Goals</Button>
+                <div className="flex gap-2">
+                  <Button variant="outline">Customize Roadmap</Button>
+                  <Button>
+                    <Download className="h-4 w-4 mr-2" /> Download Roadmap
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
-        <CardFooter className="flex justify-between">
-          {isGenerated && (
-            <>
-              <Button variant="outline">Customize Roadmap</Button>
-              <Button className="gap-1">
-                <Download className="h-4 w-4" /> Download Roadmap
-              </Button>
-            </>
-          )}
-        </CardFooter>
       </Card>
     </div>
   )
 }
-
