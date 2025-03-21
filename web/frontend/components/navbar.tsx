@@ -48,7 +48,7 @@ export default function Navbar() {
       animate={{ y: 0 }}
       transition={{ duration: 0.5 }}
       className={`w-full transition-all duration-300 ${
-        scrolled ? "sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-sm" : "bg-transparent"
+        scrolled ? "sticky top-0 z-50 bg-lightblue-300 backdrop-blur-md shadow-sm" : "bg-transparent"
       }`}
     >
       <div className="container mx-auto px-4 md:px-6 flex h-16 items-center justify-between">
