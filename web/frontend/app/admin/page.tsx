@@ -1,10 +1,12 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart3, Users, Briefcase, FileCheck, Settings } from "lucide-react"
+import BackgroundAnimation from "@/components/BackgroundAnimation"
 
 export default function AdminDashboardPage() {
   return (
     <main className="flex min-h-screen flex-col">
+      <BackgroundAnimation />
       <div className="container py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
