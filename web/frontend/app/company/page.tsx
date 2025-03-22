@@ -4,10 +4,12 @@ import CompanyProfile from "@/components/company/company-profile"
 import JobPostings from "@/components/company/job-postings"
 import CandidateSearch from "@/components/company/candidate-search"
 import ApplicationManagement from "@/components/company/application-management"
+import BackgroundAnimationLight from "@/components/BackgroundAnimationLight"
 
 export default function CompanyPortalPage() {
   return (
     <main className="flex min-h-screen flex-col">
+      <BackgroundAnimationLight />
       <div className="container py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Company Portal</h1>

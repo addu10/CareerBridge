@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GraduationCap, Building } from "lucide-react"
 import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/hooks/use-toast"
+import BackgroundAnimationLight from "@/components/BackgroundAnimationLight"
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
@@ -24,9 +25,7 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      // Pass user type to login function
       await login(username, password, userType === 'company')
-      // Success toast will be shown after redirection
     } catch (error: any) {
       const errorMessage = error.message || "Invalid username or password. Please try again."
       console.error("Login error:", errorMessage)
@@ -44,6 +43,7 @@ export default function LoginPage() {
 
   return (
     <div className="container flex h-screen w-screen flex-col items-center justify-center">
+      <BackgroundAnimationLight />
       <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
         <div className="flex flex-col space-y-2 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>

@@ -11,6 +11,7 @@ import { GraduationCap, Building } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/components/ui/use-toast"
+import BackgroundAnimationLight from "@/components/BackgroundAnimationLight"
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("")
@@ -53,6 +54,7 @@ export default function RegisterPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <BackgroundAnimationLight />
       <div className="mx-auto max-w-md space-y-6">
         <div className="space-y-2 text-center">
           <h1 className="text-3xl font-bold">Create an account</h1>

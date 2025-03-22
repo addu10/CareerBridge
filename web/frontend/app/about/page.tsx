@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Building, Users, Award, BookOpen } from "lucide-react"
+import BackgroundAnimationLight from "@/components/BackgroundAnimationLight"
 
 export default function AboutPage() {
   return (
     <main className="flex min-h-screen flex-col">
+      <BackgroundAnimationLight />
       <div className="container py-12 space-y-12">
         <div className="text-center space-y-4 max-w-3xl mx-auto">
           <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl">About CareerConnect</h1>

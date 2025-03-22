@@ -5,10 +5,12 @@ import ResumeChecker from "@/components/student/resume-checker"
 import RoadmapGenerator from "@/components/student/roadmap-generator"
 import InterviewPrep from "@/components/student/interview-prep"
 import JobListings from "@/components/student/job-listings"
+import BackgroundAnimationLight from "@/components/BackgroundAnimationLight"
 
 export default function StudentPortalPage() {
   return (
     <main className="flex min-h-screen flex-col">
+      <BackgroundAnimationLight />
       <div className="container py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Student Portal</h1>

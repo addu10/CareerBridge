@@ -66,22 +66,18 @@ export default function Navbar() {
           </Link>
           {user ? (
             <>
-              {user.user_type === "student" && (
-                <Link
-                  href="/student"
-                  className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/student") ? "text-primary font-semibold" : ""}`}
-                >
-                  Student Portal
-                </Link>
-              )}
-              {user.user_type === "company" && (
-                <Link
-                  href="/company"
-                  className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/company") ? "text-primary font-semibold" : ""}`}
-                >
-                  Company Portal
-                </Link>
-              )}
+              <Link
+                href="/student"
+                className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/student") ? "text-primary font-semibold" : ""}`}
+              >
+                Student Portal
+              </Link>
+              <Link
+                href="/company"
+                className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/company") ? "text-primary font-semibold" : ""}`}
+              >
+                Company Portal
+              </Link>
               <Link
                 href="/about"
                 className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary font-semibold" : ""}`}
@@ -158,24 +154,20 @@ export default function Navbar() {
             </Link>
             {user ? (
               <>
-                {user.user_type === "student" && (
-                  <Link
-                    href="/student"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/student") ? "text-primary font-semibold" : ""}`}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Student Portal
-                  </Link>
-                )}
-                {user.user_type === "company" && (
-                  <Link
-                    href="/company"
-                    className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/company") ? "text-primary font-semibold" : ""}`}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Company Portal
-                  </Link>
-                )}
+                <Link
+                  href="/student"
+                  className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/student") ? "text-primary font-semibold" : ""}`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Student Portal
+                </Link>
+                <Link
+                  href="/company"
+                  className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/company") ? "text-primary font-semibold" : ""}`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Company Portal
+                </Link>
                 <Link
                   href="/about"
                   className={`text-sm font-medium transition-colors hover:text-primary ${isActive("/about") ? "text-primary font-semibold" : ""}`}
